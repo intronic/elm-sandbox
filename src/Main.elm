@@ -2,6 +2,7 @@ module Main exposing (..)
 
 import Array exposing (Array)
 import Browser
+import Browser.Navigation as Nav
 import Html exposing (Html, div, h1, h3, p, text)
 import Html.Attributes exposing (class, href, style)
 import Internal.Menu.Model exposing (Msg(..))
@@ -12,6 +13,8 @@ import Material.Drawer.Modal as Drawer
 import Material.List as Lists
 import Material.Options as Options exposing (css, styled, when)
 import Material.TopAppBar as TopAppBar
+import Route
+import Url
 
 
 
@@ -20,14 +23,18 @@ import Material.TopAppBar as TopAppBar
 
 type alias Model =
     { mdc : Material.Model Msg
+    , key : Nav.Key
+    , route : Route.Route
     , counters : Array Int
     , drawer_open : Bool
     }
 
 
-defaultModel : Model
-defaultModel =
+defaultModel : Url.Url -> Nav.Key -> Model
+defaultModel url key =
     { mdc = Material.defaultModel
+    , key = key
+    , route = Route.fromUrl url
     , counters = Array.fromList [ 1, 3, 0 ] -- Array.empty
     , drawer_open = False
     }
@@ -35,6 +42,8 @@ defaultModel =
 
 type Msg
     = Mdc (Material.Msg Msg)
+    | UrlChanged Url.Url
+    | UrlRequested Browser.UrlRequest
     | Click
       -- Counters
     | Increase Int
@@ -55,17 +64,24 @@ map k f a =
 
 main : Program () Model Msg
 main =
-    Browser.element
-        { init = \_ -> init
+    Browser.application
+        { init = init
         , subscriptions = subscriptions
         , update = update
         , view = view
+        , onUrlChange = UrlChanged
+        , onUrlRequest = UrlRequested
         }
 
 
-init : ( Model, Cmd Msg )
-init =
-    ( defaultModel, Cmd.none )
+type alias Flags =
+    { horizontalScrollbarHeight : Int
+    }
+
+
+init : () -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init flags url key =
+    ( defaultModel url key, Cmd.none )
 
 
 subscriptions : Model -> Sub Msg
@@ -83,6 +99,17 @@ update msg model =
     case msg of
         Mdc msg_ ->
             Material.update Mdc msg_ model
+
+        UrlRequested (Browser.Internal url) ->
+            ( { model | route = Route.fromUrl url, drawer_open = False }
+            , Nav.pushUrl model.key (Route.toString (Route.fromUrl url))
+            )
+
+        UrlRequested (Browser.External url) ->
+            ( model, Nav.load url )
+
+        UrlChanged url ->
+            ( { model | route = Route.fromUrl url }, Cmd.none )
 
         Click ->
             ( model, Cmd.none )
@@ -143,7 +170,7 @@ viewDrawer model =
     Drawer.view Mdc
         "my-drawer"
         model.mdc
-        [ Drawer.open |> when model.drawer_open
+        [ when model.drawer_open Drawer.open
         , Drawer.onClose CloseDrawer
         ]
         [ Drawer.header
@@ -155,43 +182,50 @@ viewDrawer model =
                 "my-drawer-list"
                 model.mdc
                 []
-                [ drawerLink "Dashboard"
-                , drawerLink "My account"
+                [ drawerLink Route.CP
+                , drawerLink Route.Counter
                 , Lists.hr [] []
-                , drawerLink "Logout"
+                , drawerLink Route.Logout
                 ]
             ]
         ]
 
 
-drawerLink : String -> Lists.ListItem Msg
-drawerLink linkContent =
+drawerLink : Route.Route -> Lists.ListItem Msg
+drawerLink route =
     Lists.a
-        [ Options.attribute (href "#")
-        , Lists.activated |> when isActive
+        [ Options.attribute (href <| Route.toString route)
+        , when isActive Lists.activated
         ]
-        [ text linkContent ]
+        [ text <| Route.toName route ]
 
 
 isActive =
-    False
+    True
 
 
-viewContent : Html Msg
-viewContent =
+viewContent : Model -> Html Msg
+viewContent model =
     div []
-        [ h1 [] [ text "My Content" ]
-        , p [] [ text "BODY TEXT HERE" ]
+        [ h1 [] [ text <| "My Content" ++ (Route.toName model.route) ]
+        , p [] [ text <| "BODY TEXT HERE: "  ++ (Route.toString model.route) ]
         ]
 
 
-view : Model -> Html Msg
+view : Model -> Browser.Document Msg
 view model =
+    { title = "The Demo Elm"
+    , body = [ view_ model ]
+    }
+
+
+view_ : Model -> Html Msg
+view_ model =
     Html.div []
         [ viewTopAppBar model
         , viewDrawer model
         , Drawer.scrim [ Options.onClick CloseDrawer ] []
-        , styled Html.main_ [ TopAppBar.fixedAdjust ] [ viewContent ]
+        , styled Html.main_ [ TopAppBar.fixedAdjust ] [ viewContent model ]
         ]
 
 
