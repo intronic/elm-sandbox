@@ -2,11 +2,16 @@ module Main exposing (..)
 
 import Array exposing (Array)
 import Browser
-import Html exposing (Html, div, text)
+import Html exposing (Html, div, h1, h3, p, text)
 import Html.Attributes exposing (class, href, style)
+import Internal.Menu.Model exposing (Msg(..))
+import Internal.Tooltip.Model exposing (YTransformOrigin(..))
 import Material
 import Material.Button as Button
-import Material.Options as Options exposing (css, styled)
+import Material.Drawer.Modal as Drawer
+import Material.List as Lists
+import Material.Options as Options exposing (css, styled, when)
+import Material.TopAppBar as TopAppBar
 
 
 
@@ -16,6 +21,7 @@ import Material.Options as Options exposing (css, styled)
 type alias Model =
     { mdc : Material.Model Msg
     , counters : Array Int
+    , drawer_open : Bool
     }
 
 
@@ -23,6 +29,7 @@ defaultModel : Model
 defaultModel =
     { mdc = Material.defaultModel
     , counters = Array.fromList [ 1, 3, 0 ] -- Array.empty
+    , drawer_open = False
     }
 
 
@@ -34,6 +41,9 @@ type Msg
     | Reset Int
     | Add
     | Remove
+      -- Drawer
+    | OpenDrawer
+    | CloseDrawer
 
 
 map : Int -> (a -> a) -> Array a -> Array a
@@ -41,11 +51,6 @@ map k f a =
     Array.get k a
         |> Maybe.map (\x -> Array.set k (f (Debug.log "" x)) a)
         |> Maybe.withDefault a
-
-
-map2 : Int -> (a -> a) -> Array a -> Array a
-map2 k f a =
-    Maybe.withDefault a (Maybe.map (\x -> Array.set k (f (Debug.log "" x)) a) (Array.get k a))
 
 
 main : Program () Model Msg
@@ -82,6 +87,7 @@ update msg model =
         Click ->
             ( model, Cmd.none )
 
+        -- Counters
         Increase k ->
             ( { model | counters = map k ((+) 1) model.counters }, Cmd.none )
 
@@ -93,6 +99,13 @@ update msg model =
 
         Remove ->
             ( { model | counters = arrayPop model.counters }, Cmd.none )
+
+        -- Drawer
+        OpenDrawer ->
+            ( { model | drawer_open = True }, Cmd.none )
+
+        CloseDrawer ->
+            ( { model | drawer_open = False }, Cmd.none )
 
 
 view1 : Model -> Int -> Int -> Html Msg
@@ -106,8 +119,84 @@ view1 model idx val =
         ]
 
 
+viewTopAppBar : Model -> Html Msg
+viewTopAppBar model =
+    TopAppBar.view Mdc
+        "my-top-app-bar"
+        model.mdc
+        []
+        [ TopAppBar.section
+            [ TopAppBar.alignStart
+            ]
+            [ TopAppBar.navigationIcon Mdc
+                "my-top-app-bar--menu"
+                model.mdc
+                [ Options.onClick OpenDrawer ]
+                "menu"
+            , TopAppBar.title [] [ text "Basic App Example" ]
+            ]
+        ]
+
+
+viewDrawer : Model -> Html Msg
+viewDrawer model =
+    Drawer.view Mdc
+        "my-drawer"
+        model.mdc
+        [ Drawer.open |> when model.drawer_open
+        , Drawer.onClose CloseDrawer
+        ]
+        [ Drawer.header
+            []
+            [ styled h3 [ Drawer.title ] [ text "A Header" ]
+            ]
+        , Drawer.content []
+            [ Lists.nav Mdc
+                "my-drawer-list"
+                model.mdc
+                []
+                [ drawerLink "Dashboard"
+                , drawerLink "My account"
+                , Lists.hr [] []
+                , drawerLink "Logout"
+                ]
+            ]
+        ]
+
+
+drawerLink : String -> Lists.ListItem Msg
+drawerLink linkContent =
+    Lists.a
+        [ Options.attribute (href "#")
+        , Lists.activated |> when isActive
+        ]
+        [ text linkContent ]
+
+
+isActive =
+    False
+
+
+viewContent : Html Msg
+viewContent =
+    div []
+        [ h1 [] [ text "My Content" ]
+        , p [] [ text "BODY TEXT HERE" ]
+        ]
+
+
 view : Model -> Html Msg
 view model =
+    Html.div []
+        [ viewTopAppBar model
+        , viewDrawer model
+        , Drawer.scrim [ Options.onClick CloseDrawer ] []
+        , styled Html.main_ [ TopAppBar.fixedAdjust ] [ viewContent ]
+        ]
+
+
+counterView : Model -> Html Msg
+counterView model =
     let
         counters =
             model.counters |> Array.toList |> List.indexedMap (view1 model)
